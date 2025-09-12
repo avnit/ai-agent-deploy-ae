@@ -39,11 +39,6 @@ def model_armor_analyze(prompt: str):
     jailbreak = response.sanitization_result.filter_results.get("pi_and_jailbreak")
     sensitive_data = response.sanitization_result.filter_results.get("sdp")
     malicious_content = response.sanitization_result.filter_results.get("malicious_uris")
-    # for prediction in response.predictions:
-    #     if "jailbreak" in prediction:
-    #         jailbreak = prediction
-    #     if "sensitive_data" in prediction:
-    #         sensitive_data = prediction
 
     return jailbreak, sensitive_data, malicious_content
 

@@ -27,15 +27,15 @@ agent = ae.AdkApp(
 
 print(f"Agent '{agent.name}' deployed with resource name: '{agent.resource_name}'")
 
-remote_app = ae.create(
-    agent_engine = agent,
-    requirements = [
-        "google-cloud-aiplatform[adk,agent_engines]",
-        "google-cloud-modelarmor", # Added this requirement
-        "google-adk",              # Added this requirement
-        "pydantic==2.11.7",        # Added these based on your error message
-        "cloudpickle==3.1.1"       # Added these based on your error message
-    ]
-)
+# remote_app = ae.create(
+#     agent_engine = agent,
+#     requirements = [
+#         "google-cloud-aiplatform[adk,agent_engines]",
+#         "google-cloud-modelarmor", # Added this requirement
+#         "google-adk",              # Added this requirement
+#         "pydantic==2.11.7",        # Added these based on your error message
+#         "cloudpickle==3.1.1"       # Added these based on your error message
+#     ]
+# )
 
 print(f"Deployment finished!")
