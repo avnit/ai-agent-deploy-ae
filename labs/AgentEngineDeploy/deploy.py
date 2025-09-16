@@ -1,15 +1,16 @@
 import os
 import sys
 import vertexai
-from vertexai import agent_engines as ae
+from vertexai.agent_engines import AdkApp
 # Add the project root to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import the agent from the modelarmor module
 from modelarmor.agent import root_agent
-project = os.getenv("GOOGLE_CLOUD_PROJECT")
-location = os.getenv("GOOGLE_CLOUD_LOCATION")
-endpoint_id = os.getenv("AIP_ENDPOINT_ID")
+
+# project = os.getenv("GOOGLE_CLOUD_PROJECT")
+# location = os.getenv("GOOGLE_CLOUD_LOCATION")
+# endpoint_id = os.getenv("AIP_ENDPOINT_ID")
 
 project = "data-vpc-sc-demo"
 location ="us-east4"
@@ -20,7 +21,7 @@ vertexai.init(
  )
 
 # Build and deploy the agent
-agent = ae.AdkApp(
+agent = AdkApp(
     agent = root_agent,
     enable_tracing=True,
 )
