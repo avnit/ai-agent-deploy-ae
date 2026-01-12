@@ -1,5 +1,6 @@
 from google.adk.agents import Agent
 from google.genai import types
+from agent import guardrail_function
 
 # Mock tools for CVE data
 def search_nist_cve(query: str):
@@ -21,7 +22,8 @@ nist_agent = Agent(
     model="gemini-2.5-flash",
     description="Agent specialized in finding CVEs from NIST.",
     instruction="You are a security analyst. Use the `search_nist_cve` tool to find CVE information from NIST.",
-    tools=[search_nist_cve]
+    tools=[search_nist_cve],
+    before_model_callback=guardrail_function
 )
 
 mitre_agent = Agent(
@@ -29,7 +31,8 @@ mitre_agent = Agent(
     model="gemini-2.5-flash",
     description="Agent specialized in finding CVEs from MITRE.",
     instruction="You are a security analyst. Use the `search_mitre_cve` tool to find CVE information from MITRE.",
-    tools=[search_mitre_cve]
+    tools=[search_mitre_cve],
+    before_model_callback=guardrail_function
 )
 
 remediation_agent = Agent(
@@ -37,5 +40,6 @@ remediation_agent = Agent(
     model="gemini-2.5-flash",
     description="Agent specialized in providing GCP remediation instructions.",
     instruction="You are a cloud security expert. Use the `get_gcp_remediation` tool to provide fix instructions for CVEs on Google Cloud.",
-    tools=[get_gcp_remediation]
+    tools=[get_gcp_remediation],
+    before_model_callback=guardrail_function
 )

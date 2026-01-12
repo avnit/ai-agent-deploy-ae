@@ -40,30 +40,45 @@ def run_agent(agent, query):
             return str(e)
 
 def main():
-    query = "CVE-2024-1234"
-    print(f"Starting parallel execution for query: {query}")
+    # Get query from user input or default
+    print("Enter CVE query (or press Enter for default 'CVE-2024-1234'):")
+    user_query = input()
+    if not user_query:
+        user_query = "CVE-2024-1234"
+        
+    print(f"Starting execution for query: {user_query}")
     
-    with tracer.start_as_current_span("parallel_agent_execution"):
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-            # Submit tasks for each agent
-            future_nist = executor.submit(run_agent, nist_agent, query)
-            future_mitre = executor.submit(run_agent, mitre_agent, query)
+    with tracer.start_as_current_span("agent_orchestration"):
+        # Phase 1: Research (Parallel)
+        print("\n--- Phase 1: Research (Parallel) ---")
+        research_results = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            future_nist = executor.submit(run_agent, nist_agent, user_query)
+            future_mitre = executor.submit(run_agent, mitre_agent, user_query)
             
-            # Wait for CVE fetchers to complete before remediation?
-            # The prompt asks for "parallel adk agent observability".
-            # We can run them all in parallel, but remediation might need input.
-            # For the sake of "parallel" demo, we'll run remediation on the query directly
-            # or maybe we can chain them. 
-            # Let's run NIST and MITRE in parallel, then Remediation.
-            # But to show "all agent run in parallel" as requested:
-            # "As well have all the agent run in parallel"
-            # So I will run all 3 in parallel.
-            future_remediation = executor.submit(run_agent, remediation_agent, query)
-            
-            futures = [future_nist, future_mitre, future_remediation]
-            
+            futures = [future_nist, future_mitre]
             for future in concurrent.futures.as_completed(futures):
-                print(f"Result: {future.result()}")
+                try:
+                    result = future.result()
+                    research_results.append(result)
+                    print(f"Research Result: {result}")
+                except Exception as e:
+                    print(f"Research Agent failed: {e}")
+
+        # Phase 2: Remediation (Sequential, using research context)
+        print("\n--- Phase 2: Remediation (Sequential) ---")
+        
+        # Combine research results into a context for the remediation agent
+        combined_context = f"Query: {user_query}\n"
+        combined_context += "Research Findings:\n" + "\n".join(research_results)
+        
+        # Run remediation agent
+        # Note: In a real scenario, we'd pass this context as part of the prompt or a specific tool argument.
+        # For this demo, we'll pass the combined context as the 'query' to the agent wrapper.
+        remediation_result = run_agent(remediation_agent, combined_context)
+        
+        print("\n--- Final Report ---")
+        print(remediation_result)
 
 if __name__ == "__main__":
     main()
