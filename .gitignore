@@ -74,3 +74,12 @@ $RECYCLE.BIN/
 
 .gemini/
 gha-creds-*.json
+
+### Python ###
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+*.egg-info/
+dist/
+build/
