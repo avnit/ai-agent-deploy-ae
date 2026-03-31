@@ -2,11 +2,10 @@ import os
 import sys
 import vertexai
 from vertexai.agent_engines import AdkApp
-# Add the project root to the Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add the current directory to the Python path so agent.py can be found
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Import the agent from the modelarmor module
-from modelarmor.agent import root_agent
+from agent import root_agent
 
 project = os.getenv("GOOGLE_CLOUD_PROJECT")
 location = os.getenv("GOOGLE_CLOUD_LOCATION")
