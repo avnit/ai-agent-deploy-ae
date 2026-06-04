@@ -1,6 +1,7 @@
 import json
+import os
 
-file_path = '/home/abambah/ai-agent-deploy-ae/colabs/MA_with_CR_and_CD_New.ipynb'
+file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'MA_with_CR_and_CD_New.ipynb')
 
 with open(file_path, 'r') as f:
     notebook = json.load(f)
