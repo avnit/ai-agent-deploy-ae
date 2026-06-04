@@ -1,3 +1,7 @@
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import concurrent.futures
 import time
 from cve_agents import nist_agent, mitre_agent, remediation_agent

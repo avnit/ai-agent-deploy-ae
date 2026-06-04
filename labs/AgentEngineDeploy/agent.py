@@ -9,8 +9,6 @@ from google.adk.models import LlmResponse, LlmRequest
 from google.adk.agents.callback_context import CallbackContext
 from google.api_core.client_options import ClientOptions
 from google.cloud import modelarmor_v1 as aiplatform
-from google.protobuf import struct_pb2
-
 load_dotenv()
 
 project = os.getenv("GOOGLE_CLOUD_PROJECT")
@@ -71,7 +69,7 @@ def guardrail_function(callback_context: CallbackContext, llm_request: LlmReques
         if sensitive_data.sdp_filter_result.inspect_result.match_state.name == "MATCH_FOUND":
             pii_found = True
             callback_context.state["PII"] = True
-            if pii_found and str(last_user_message).lower() != "No":
+            if pii_found and str(last_user_message).lower() != "no":
                 return LlmResponse(
                     content=types.Content(
                         role="model",
@@ -79,16 +77,16 @@ def guardrail_function(callback_context: CallbackContext, llm_request: LlmReques
                                           f"""
                                           Your query has identify the following personal information:
                                           {sensitive_data.sdp_filter_result.deidentify_result.info_types}
-                                          
+
                                           Would you like to continue? (Yes/No)
                                           """
                                           )],
                     )
                 )
-            elif pii_found and str(last_user_message).lower() == "Yes":
+            elif pii_found and str(last_user_message).lower() == "yes":
                 callback_context.state["PII"] = False
                 return None
-            elif pii_found and str(last_user_message).lower() == "No":
+            elif pii_found and str(last_user_message).lower() == "no":
                 callback_context.state["PII"] = False
                 return LlmResponse(
                     content=types.Content(
@@ -97,15 +95,14 @@ def guardrail_function(callback_context: CallbackContext, llm_request: LlmReques
                     )
                 )
 
-    if jailbreak and jailbreak.pi_and_jailbreak_filter_result.match_state.name == "MATCH_FOUND":
-        # if jailbreak.pi_and_jailbreak_filter_result.match_state.name == "MATCH_FOUND":
+    if jailbreak and jailbreak.pi_and_jailbreak_filter_result and jailbreak.pi_and_jailbreak_filter_result.match_state.name == "MATCH_FOUND":
         return LlmResponse(
             content=types.Content(
                 role="model",
                 parts=[types.Part(text="""Break Reason: Jailbreak""")]
             )
         )
-    if malicious_content and malicious_content.malicious_uri_filter_result.match_state.name == "MATCH_FOUND":
+    if malicious_content and malicious_content.malicious_uri_filter_result and malicious_content.malicious_uri_filter_result.match_state.name == "MATCH_FOUND":
         return LlmResponse(
             content=types.Content(
                 role="model",
