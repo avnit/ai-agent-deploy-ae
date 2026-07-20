@@ -15,10 +15,17 @@ project = os.getenv("GOOGLE_CLOUD_PROJECT")
 location = os.getenv("GOOGLE_CLOUD_LOCATION")
 endpoint_id = os.getenv("AIP_ENDPOINT_ID")
 
-client = aiplatform.ModelArmorClient(
-    transport="rest",
-    client_options=ClientOptions(api_endpoint=f"modelarmor.{location}.rep.googleapis.com")
-)
+_client = None
+
+def get_model_armor_client():
+    global _client
+    if _client is None:
+        loc = os.getenv("GOOGLE_CLOUD_LOCATION") or "us-central1"
+        _client = aiplatform.ModelArmorClient(
+            transport="rest",
+            client_options=ClientOptions(api_endpoint=f"modelarmor.{loc}.rep.googleapis.com")
+        )
+    return _client
 
 
 def model_armor_analyze(prompt: str):
@@ -31,6 +38,7 @@ def model_armor_analyze(prompt: str):
         user_prompt_data=user_prompt_data    
     )
     
+    client = get_model_armor_client()
     response = client.sanitize_user_prompt(request=request)
     print(response)
     
@@ -53,47 +61,47 @@ def guardrail_function(callback_context: CallbackContext, llm_request: LlmReques
             last_user_message = llm_request.contents[-1].parts[0].text
     print(f"[Callback] Inspecting last user message: '{last_user_message}'")
 
-    if pii_found and str(last_user_message).lower() != "yes":
-        return LlmResponse(
-            content=types.Content(
-                role="model",
-                parts=[types.Part(text="Please respond Yes/No to continue")]
+    # If we are in a pending PII confirmation state, process the user's Yes/No reply.
+    if pii_found:
+        user_reply = str(last_user_message).strip().lower()
+        if user_reply == "yes":
+            callback_context.state["PII"] = False
+            # Allow the request to proceed
+            return None
+        elif user_reply == "no":
+            callback_context.state["PII"] = False
+            return LlmResponse(
+                content=types.Content(
+                    role="model",
+                    parts=[types.Part(text="Please rephrase your query without personal information.")]
+                )
             )
-        )
-    elif pii_found and str(last_user_message).lower() == "yes":
-        callback_context.state["PII"] = False
-        return None
+        else:
+            return LlmResponse(
+                content=types.Content(
+                    role="model",
+                    parts=[types.Part(text="Please respond Yes/No to continue")]
+                )
+            )
 
+    # First-time analysis of the prompt
     jailbreak, sensitive_data, malicious_content = model_armor_analyze(str(last_user_message))
     if sensitive_data and sensitive_data.sdp_filter_result and sensitive_data.sdp_filter_result.inspect_result:
         if sensitive_data.sdp_filter_result.inspect_result.match_state.name == "MATCH_FOUND":
-            pii_found = True
             callback_context.state["PII"] = True
-            if pii_found and str(last_user_message).lower() != "no":
-                return LlmResponse(
-                    content=types.Content(
-                        role="model",
-                        parts=[types.Part(text=
-                                          f"""
-                                          Your query has identify the following personal information:
-                                          {sensitive_data.sdp_filter_result.deidentify_result.info_types}
+            return LlmResponse(
+                content=types.Content(
+                    role="model",
+                    parts=[types.Part(text=
+                                      f"""
+                                      Your query has identified the following personal information:
+                                      {sensitive_data.sdp_filter_result.deidentify_result.info_types}
 
-                                          Would you like to continue? (Yes/No)
-                                          """
-                                          )],
-                    )
+                                      Would you like to continue? (Yes/No)
+                                      """
+                                      )],
                 )
-            elif pii_found and str(last_user_message).lower() == "yes":
-                callback_context.state["PII"] = False
-                return None
-            elif pii_found and str(last_user_message).lower() == "no":
-                callback_context.state["PII"] = False
-                return LlmResponse(
-                    content=types.Content(
-                        role="model",
-                        parts=[types.Part(text="Please rephrase your query without personal information.")],
-                    )
-                )
+            )
 
     if jailbreak and jailbreak.pi_and_jailbreak_filter_result and jailbreak.pi_and_jailbreak_filter_result.match_state.name == "MATCH_FOUND":
         return LlmResponse(
