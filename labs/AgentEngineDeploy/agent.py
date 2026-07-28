@@ -1,19 +1,23 @@
 #%%
 import os
+# pyrefly: ignore [missing-import]
 from dotenv import load_dotenv
 from typing import Optional
+# pyrefly: ignore [missing-import]
 from google.genai import types
+# pyrefly: ignore [missing-import]
 from google.adk.agents import Agent
+# pyrefly: ignore [missing-import]
 from google.adk.tools import google_search
+# pyrefly: ignore [missing-import]
 from google.adk.models import LlmResponse, LlmRequest
+# pyrefly: ignore [missing-import]
 from google.adk.agents.callback_context import CallbackContext
+# pyrefly: ignore [missing-import]
 from google.api_core.client_options import ClientOptions
+# pyrefly: ignore [missing-import]
 from google.cloud import modelarmor_v1 as aiplatform
 load_dotenv()
-
-project = os.getenv("GOOGLE_CLOUD_PROJECT")
-location = os.getenv("GOOGLE_CLOUD_LOCATION")
-endpoint_id = os.getenv("AIP_ENDPOINT_ID")
 
 _client = None
 
@@ -29,24 +33,62 @@ def get_model_armor_client():
 
 
 def model_armor_analyze(prompt: str):
+    project = os.getenv("GOOGLE_CLOUD_PROJECT")
+    location = os.getenv("GOOGLE_CLOUD_LOCATION")
+    endpoint_id = os.getenv("AIP_ENDPOINT_ID")
+
+    if not all([project, location, endpoint_id]):
+        print("[ModelArmor] Warning: Missing required env vars (GOOGLE_CLOUD_PROJECT, GOOGLE_CLOUD_LOCATION, AIP_ENDPOINT_ID)")
+        return None, None, None
+
     print(f"Analyzing prompt with Model Armor: {prompt}")
     print(f"Using Model Armor endpoint: projects/{project}/locations/{location}/templates/{endpoint_id}")
-    user_prompt_data = aiplatform.DataItem(text=prompt)
-    # user_prompt_data.text = prompt
-    request = aiplatform.SanitizeUserPromptRequest(
-        name = f"projects/{project}/locations/{location}/templates/{endpoint_id}",
-        user_prompt_data=user_prompt_data    
-    )
     
-    client = get_model_armor_client()
-    response = client.sanitize_user_prompt(request=request)
-    print(response)
-    
-    jailbreak = response.sanitization_result.filter_results.get("pi_and_jailbreak")
-    sensitive_data = response.sanitization_result.filter_results.get("sdp")
-    malicious_content = response.sanitization_result.filter_results.get("malicious_uris")
+    try:
+        user_prompt_data = aiplatform.DataItem(text=prompt)
+        request = aiplatform.SanitizeUserPromptRequest(
+            name=f"projects/{project}/locations/{location}/templates/{endpoint_id}",
+            user_prompt_data=user_prompt_data    
+        )
+        
+        client = get_model_armor_client()
+        response = client.sanitize_user_prompt(request=request)
+        print(response)
+        
+        filter_results = response.sanitization_result.filter_results
+        jailbreak = filter_results.get("pi_and_jailbreak")
+        sensitive_data = filter_results.get("sdp")
+        malicious_content = filter_results.get("malicious_uris")
 
-    return jailbreak, sensitive_data, malicious_content
+        return jailbreak, sensitive_data, malicious_content
+    except Exception as e:
+        print(f"[ModelArmor] Error analyzing prompt with Model Armor: {e}")
+        return None, None, None
+
+
+def _is_match_found(filter_obj) -> bool:
+    if not filter_obj:
+        return False
+    match_state = getattr(filter_obj, "match_state", None)
+    if match_state is None:
+        return False
+    return (
+        match_state == aiplatform.FilterMatchState.MATCH_FOUND
+        or getattr(match_state, "name", "") == "MATCH_FOUND"
+    )
+
+
+def extract_pii_info_types(sdp_filter_result: aiplatform.SdpFilterResult) -> list:
+    info_types = []
+    if sdp_filter_result.inspect_result and sdp_filter_result.inspect_result.findings:
+        for finding in sdp_filter_result.inspect_result.findings:
+            if finding.info_type and finding.info_type not in info_types:
+                info_types.append(finding.info_type)
+    if not info_types and sdp_filter_result.deidentify_result and sdp_filter_result.deidentify_result.info_types:
+        for it in sdp_filter_result.deidentify_result.info_types:
+            if it not in info_types:
+                info_types.append(it)
+    return info_types
 
 
 def guardrail_function(callback_context: CallbackContext, llm_request: LlmRequest) -> Optional[LlmResponse]:
@@ -55,10 +97,19 @@ def guardrail_function(callback_context: CallbackContext, llm_request: LlmReques
 
     pii_found = callback_context.state.get("PII", False)
 
+    # Search backwards through contents for the latest user text message
     last_user_message = ""
-    if llm_request.contents and llm_request.contents[-1].role == 'user':
-        if llm_request.contents[-1].parts:
-            last_user_message = llm_request.contents[-1].parts[0].text
+    if llm_request.contents:
+        for content in reversed(llm_request.contents):
+            if content.role == "user" and content.parts:
+                for part in content.parts:
+                    text = getattr(part, "text", None)
+                    if text:
+                        last_user_message = text
+                        break
+                if last_user_message:
+                    break
+
     print(f"[Callback] Inspecting last user message: '{last_user_message}'")
 
     # If we are in a pending PII confirmation state, process the user's Yes/No reply.
@@ -84,39 +135,44 @@ def guardrail_function(callback_context: CallbackContext, llm_request: LlmReques
                 )
             )
 
+    if not last_user_message.strip():
+        return None
+
     # First-time analysis of the prompt
     jailbreak, sensitive_data, malicious_content = model_armor_analyze(str(last_user_message))
+    
     if sensitive_data and sensitive_data.sdp_filter_result and sensitive_data.sdp_filter_result.inspect_result:
-        if sensitive_data.sdp_filter_result.inspect_result.match_state.name == "MATCH_FOUND":
+        if _is_match_found(sensitive_data.sdp_filter_result.inspect_result):
             callback_context.state["PII"] = True
+            info_types = extract_pii_info_types(sensitive_data.sdp_filter_result)
+            info_types_str = ", ".join(info_types) if info_types else "Personal Data"
             return LlmResponse(
                 content=types.Content(
                     role="model",
-                    parts=[types.Part(text=
-                                      f"""
-                                      Your query has identified the following personal information:
-                                      {sensitive_data.sdp_filter_result.deidentify_result.info_types}
-
-                                      Would you like to continue? (Yes/No)
-                                      """
-                                      )],
+                    parts=[types.Part(
+                        text=f"Your query has identified the following personal information:\n{info_types_str}\n\nWould you like to continue? (Yes/No)"
+                    )],
                 )
             )
 
-    if jailbreak and jailbreak.pi_and_jailbreak_filter_result and jailbreak.pi_and_jailbreak_filter_result.match_state.name == "MATCH_FOUND":
-        return LlmResponse(
-            content=types.Content(
-                role="model",
-                parts=[types.Part(text="""Break Reason: Jailbreak""")]
+    if jailbreak and jailbreak.pi_and_jailbreak_filter_result:
+        if _is_match_found(jailbreak.pi_and_jailbreak_filter_result):
+            return LlmResponse(
+                content=types.Content(
+                    role="model",
+                    parts=[types.Part(text="Break Reason: Jailbreak")]
+                )
             )
-        )
-    if malicious_content and malicious_content.malicious_uri_filter_result and malicious_content.malicious_uri_filter_result.match_state.name == "MATCH_FOUND":
-        return LlmResponse(
-            content=types.Content(
-                role="model",
-                parts=[types.Part(text="""Break Reason: Malicious Content""")]
+
+    if malicious_content and malicious_content.malicious_uri_filter_result:
+        if _is_match_found(malicious_content.malicious_uri_filter_result):
+            return LlmResponse(
+                content=types.Content(
+                    role="model",
+                    parts=[types.Part(text="Break Reason: Malicious Content")]
+                )
             )
-        )
+
     return None
 
 
