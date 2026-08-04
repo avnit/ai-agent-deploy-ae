@@ -30,7 +30,7 @@ def run_agent(agent, query):
                 # Assuming the tool function takes the query as the first argument
                 # For remediation, we might need to pass a CVE ID found by previous agents
                 # But for parallel demo, we'll just pass the query
-                tool_result = tool(query)
+                tool_result = tool.func(query) if hasattr(tool, "func") else tool(query)
                 result = f"Agent {agent.name} result: {tool_result}"
             else:
                 result = f"Agent {agent.name} processed {query}"

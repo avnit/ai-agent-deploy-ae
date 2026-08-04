@@ -1,6 +1,8 @@
 import os
 import sys
+# pyrefly: ignore [missing-import]
 import vertexai
+# pyrefly: ignore [missing-import]
 from vertexai.agent_engines import AdkApp
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -27,5 +29,5 @@ agent = AdkApp(
     enable_tracing=True,
 )
 
-print(f"Agent '{agent.name}' deployed with resource name: '{agent.resource_name}'")
+print(f"Agent '{root_agent.name}' deployed with resource name: '{agent.resource_name}'")
 print(f"Deployment finished!")

@@ -21,7 +21,7 @@ WORKDIR="$(pwd)/all-repos"
 REPORT="$(pwd)/security-report-$(date +%Y%m%d-%H%M%S).txt"
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────
-for cmd in gh git pip-audit gitleaks; do
+for cmd in gh git pip-audit gitleaks jq; do
   if ! command -v "$cmd" &>/dev/null; then
     echo "❌ Missing: $cmd — install it first."
     exit 1
@@ -103,7 +103,7 @@ while IFS=$'\t' read -r FULL_NAME IS_FORK DEFAULT_BRANCH IS_PRIVATE; do
 
   # Secret scan with gitleaks
   echo "  [secrets]" | tee -a "$REPORT"
-  if LEAKS=$(gitleaks detect --source "$REPO_DIR" --no-git -q 2>&1); then
+  if LEAKS=$(gitleaks detect --source "$REPO_DIR" --no-git 2>&1); then
     echo "  ✅ No secrets detected" | tee -a "$REPORT"
   else
     echo "  ❌ Secrets found:" | tee -a "$REPORT"
@@ -121,9 +121,9 @@ while IFS=$'\t' read -r FULL_NAME IS_FORK DEFAULT_BRANCH IS_PRIVATE; do
       AUDIT=$(pip-audit -r "$REQ_FILE" --no-deps -f columns 2>/dev/null \
         | grep -v "^No known" | grep -v "^Name" | grep -v "^-" || true)
       if [[ -n "$AUDIT" ]]; then
-        echo "$AUDIT" | while IFS= read -r line; do
+        while IFS= read -r line; do
           echo "    ❌ $line" | tee -a "$REPORT"
-        done
+        done < <(echo "$AUDIT")
         VULN_FINDINGS+=("PY-VULNS: $FULL_NAME ($REL_PATH)")
       else
         echo "    ✅ No known vulnerabilities" | tee -a "$REPORT"
@@ -144,9 +144,9 @@ while IFS=$'\t' read -r FULL_NAME IS_FORK DEFAULT_BRANCH IS_PRIVATE; do
         NPM_OUT=$(cd "$PKG_DIR" && npm audit --json 2>/dev/null \
           | jq -r '.vulnerabilities | to_entries[] | "\(.value.severity) \(.key)"' 2>/dev/null || true)
         if [[ -n "$NPM_OUT" ]]; then
-          echo "$NPM_OUT" | while IFS= read -r line; do
+          while IFS= read -r line; do
             echo "    ❌ $line" | tee -a "$REPORT"
-          done
+          done < <(echo "$NPM_OUT")
           VULN_FINDINGS+=("NPM-VULNS: $FULL_NAME ($REL_PATH)")
         else
           echo "    ✅ No known vulnerabilities" | tee -a "$REPORT"

@@ -16,7 +16,7 @@ from google.adk.agents.callback_context import CallbackContext
 # pyrefly: ignore [missing-import]
 from google.api_core.client_options import ClientOptions
 # pyrefly: ignore [missing-import]
-from google.cloud import modelarmor_v1 as aiplatform
+from google.cloud import modelarmor_v1
 load_dotenv()
 
 _client = None
@@ -25,7 +25,7 @@ def get_model_armor_client():
     global _client
     if _client is None:
         loc = os.getenv("GOOGLE_CLOUD_LOCATION") or "us-central1"
-        _client = aiplatform.ModelArmorClient(
+        _client = modelarmor_v1.ModelArmorClient(
             transport="rest",
             client_options=ClientOptions(api_endpoint=f"modelarmor.{loc}.rep.googleapis.com")
         )
@@ -41,12 +41,12 @@ def model_armor_analyze(prompt: str):
         print("[ModelArmor] Warning: Missing required env vars (GOOGLE_CLOUD_PROJECT, GOOGLE_CLOUD_LOCATION, AIP_ENDPOINT_ID)")
         return None, None, None
 
-    print(f"Analyzing prompt with Model Armor: {prompt}")
-    print(f"Using Model Armor endpoint: projects/{project}/locations/{location}/templates/{endpoint_id}")
+    print(f"[ModelArmor] Analyzing prompt (len={len(prompt)})")
+    print(f"[ModelArmor] Using endpoint: projects/{project}/locations/{location}/templates/{endpoint_id}")
     
     try:
-        user_prompt_data = aiplatform.DataItem(text=prompt)
-        request = aiplatform.SanitizeUserPromptRequest(
+        user_prompt_data = modelarmor_v1.DataItem(text=prompt)
+        request = modelarmor_v1.SanitizeUserPromptRequest(
             name=f"projects/{project}/locations/{location}/templates/{endpoint_id}",
             user_prompt_data=user_prompt_data    
         )
@@ -73,21 +73,22 @@ def _is_match_found(filter_obj) -> bool:
     if match_state is None:
         return False
     return (
-        match_state == aiplatform.FilterMatchState.MATCH_FOUND
+        match_state == modelarmor_v1.FilterMatchState.MATCH_FOUND
         or getattr(match_state, "name", "") == "MATCH_FOUND"
     )
 
 
-def extract_pii_info_types(sdp_filter_result: aiplatform.SdpFilterResult) -> list:
+def extract_pii_info_types(sdp_filter_result: modelarmor_v1.SdpFilterResult) -> list:
     info_types = []
     if sdp_filter_result.inspect_result and sdp_filter_result.inspect_result.findings:
         for finding in sdp_filter_result.inspect_result.findings:
-            if finding.info_type and finding.info_type not in info_types:
-                info_types.append(finding.info_type)
+            if finding.info_type and finding.info_type.name not in info_types:
+                info_types.append(finding.info_type.name)
     if not info_types and sdp_filter_result.deidentify_result and sdp_filter_result.deidentify_result.info_types:
         for it in sdp_filter_result.deidentify_result.info_types:
-            if it not in info_types:
-                info_types.append(it)
+            name = getattr(it, "name", str(it))
+            if name not in info_types:
+                info_types.append(name)
     return info_types
 
 
@@ -142,7 +143,7 @@ def guardrail_function(callback_context: CallbackContext, llm_request: LlmReques
     jailbreak, sensitive_data, malicious_content = model_armor_analyze(str(last_user_message))
     
     if sensitive_data and sensitive_data.sdp_filter_result and sensitive_data.sdp_filter_result.inspect_result:
-        if _is_match_found(sensitive_data.sdp_filter_result.inspect_result):
+        if _is_match_found(sensitive_data.sdp_filter_result):
             callback_context.state["PII"] = True
             info_types = extract_pii_info_types(sensitive_data.sdp_filter_result)
             info_types_str = ", ".join(info_types) if info_types else "Personal Data"
