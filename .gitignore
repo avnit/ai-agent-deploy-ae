@@ -83,3 +83,20 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+
+# --- security hygiene (added 2026-08-13) ---
+.env
+.env.*
+!.env.example
+!.env.*.example
+!.env.template
+*.pem
+*.key
+!**/certs/*.key
+id_rsa
+id_rsa.*
+credentials.json
+service-account*.json
+__pycache__/
+*.pyc
+.dev.vars
